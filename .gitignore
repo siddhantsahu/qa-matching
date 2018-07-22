@@ -19,3 +19,7 @@ project/plugins/project/
 .history
 .cache
 .lib/
+
+*gz
+*.aux
+*log

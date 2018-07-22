@@ -1,0 +1,49 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{enumerate}
+\usepackage[margin=1in]{geometry}
+
+\title{QnA Matching for Stackoverflow}
+\author{Siddhant Sahu, Ram Anand Vutukuru}
+
+\setlength{\parindent}{0em}
+
+\begin{document}
+\maketitle
+
+\paragraph{Problem Description} This project will address the problem of determining if a question is a duplicate of some other question in the dataset. We consider a question duplicate of another question if a particular answer is a valid answer to both the questions.
+
+\paragraph{Dataset Details} There are four files we will work with:
+\begin{enumerate}
+	\item Original questions dataset: It contains the list of all original questions -- \texttt{questionId}, \texttt{creationDate}, \texttt{text}, \texttt{answerId}.
+	\item Duplicate questions dataset: It contains the list of question that are marked as duplicate of some other question (usually an original question) -- \textit{same schema as above}.
+	\item Answers dataset: It contains the list of all answers -- \texttt{answerId}, \texttt{text}
+	\item Tags dataset: Each question will have several tags associated with it.
+\end{enumerate}
+
+The raw files (i.e. the data dump) are in a different format (xml) and will be converted to the above format.
+
+\paragraph{Approach}
+The steps required are as follows:
+\begin{enumerate}
+	\item Clean and process the data. This will involve stripping html tags, blocks of code and links from the question text.
+	\item Write a custom tokenizer to tokenize sentences to useful phrases, in addition to words. This has been known to improve performance of text classification. \textit{Bonus feature: will include this if time permits}.
+	\item Extract text features such as TF-IDF and word2vec embeddings (\textit{bonus}).
+	\item Train classifier(s) and evaluate models. \textit{Bonus: Since this is can also be formulated as a ranking problem, we will explore this as a learning-to-rank problem if time permits}.
+\end{enumerate}
+
+\paragraph{Data Selection \& Evaluation Strategy}
+\begin{enumerate}
+	\item We will choose a few tags (common tags like \texttt{python}, \texttt{java}, etc that have a large number of duplicate questions) and train a classifier for each tag.
+	\item In addition, we will filter the dataset to keep those \texttt{answerId}s that are linked to at least 10-15 questions. This will ensure we have sufficient data per class, for training the classifier.
+	\item The classifier will use the \texttt{text} of question as feature and \texttt{answerId} as label (\textit{recall how one answer can answer multiple equivalent questions}).
+	\item We will use \textit{mean rank}, i.e. the mean position of the correct answer in the list of all answer classes, and \textit{top 3 percentage}, i.e. the percentage of test questions that have the correct answer in the top 3.
+\end{enumerate}
+
+\paragraph{Coding Language}
+\begin{enumerate}
+	\item Python scripts to convert data dump (raw xml files) to format described in \textbf{Dataset Details}. This is a one-time thing.
+	\item Spark project with Scala to build the text classifier.
+\end{enumerate}
+
+\end{document}
