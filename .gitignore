@@ -23,3 +23,5 @@ project/plugins/project/
 *gz
 *.aux
 *log
+
+.*__pycache__.*
