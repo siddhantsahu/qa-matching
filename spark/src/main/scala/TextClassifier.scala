@@ -9,9 +9,10 @@ import org.apache.spark.{SparkConf, SparkContext}
 
 object TextClassifier {
 
-  def trainClassifier(index: Integer, train: DataFrame) = {
+  def trainClassifier(index: Integer, train: DataFrame, test: DataFrame) = {
     val labelColName = "ovrLabel" + index
-    val trainingDataset = train.withColumn(labelColName, when(col("label") === index.toDouble, 1.0).otherwise(0.0))
+    val trainingDataset = train.withColumn(labelColName,
+      when(col("label") === index.toDouble, 1.0).otherwise(0.0))
 
     // weight col
     val negatives = trainingDataset.filter(trainingDataset(labelColName) === 0).count
@@ -26,14 +27,20 @@ object TextClassifier {
       }
     }
 
-    val weightedTrainingDataset = trainingDataset.withColumn("classWeight", calculateWt(trainingDataset(labelColName)))
+    val weightedTrainingDataset = trainingDataset.withColumn("classWeight",
+      calculateWt(trainingDataset(labelColName)))
 
-    val classifier = new LogisticRegression().setFeaturesCol("features").setLabelCol(labelColName).setProbabilityCol("prob")
+    val classifier = new LogisticRegression()
+      .setFeaturesCol("features")
+      .setLabelCol(labelColName)
+      .setProbabilityCol("prob")
+
     val out = classifier.fit(weightedTrainingDataset).transform(weightedTrainingDataset)
 
     val vectorToColumn = udf { (x: DenseVector, index: Int) => x(index) }
 
-    out.withColumn("prob" + index, vectorToColumn(col("prob"), lit(1))).select("id", "answerId", "prob" + index)
+    out.withColumn("prob" + index, vectorToColumn(col("prob"), lit(1)))
+      .select("id", "answerId", "prob" + index)
   }
 
   def main(args: Array[String]): Unit = {
@@ -96,11 +103,22 @@ object TextClassifier {
     test = spark.sql("select * from test where answerId in (select answerId from usefulAnswers)")
 
     // now, set up pipeline
-    val tokenizer = new Tokenizer().setInputCol("cleanText").setOutputCol("tokenizerOut")
-    val stopWordsFilter = new StopWordsRemover().setInputCol(tokenizer.getOutputCol).setOutputCol("stopWordsFilterOut")
-    val hashingTf = new HashingTF().setInputCol(stopWordsFilter.getOutputCol).setOutputCol("hashingTfOut").setNumFeatures(50)
-    val idf = new IDF().setInputCol(hashingTf.getOutputCol).setOutputCol("features")
-    val labelIndexer = new StringIndexer().setInputCol("answerId").setOutputCol("label")
+    val tokenizer = new Tokenizer()
+      .setInputCol("cleanText")
+      .setOutputCol("tokenizerOut")
+    val stopWordsFilter = new StopWordsRemover()
+      .setInputCol(tokenizer.getOutputCol)
+      .setOutputCol("stopWordsFilterOut")
+    val hashingTf = new HashingTF()
+      .setInputCol(stopWordsFilter.getOutputCol)
+      .setOutputCol("hashingTfOut")
+      .setNumFeatures(50)
+    val idf = new IDF()
+      .setInputCol(hashingTf.getOutputCol)
+      .setOutputCol("features")
+    val labelIndexer = new StringIndexer()
+      .setInputCol("answerId")
+      .setOutputCol("label")
 
     val pipeline = new Pipeline().setStages(Array(tokenizer, stopWordsFilter, hashingTf, idf, labelIndexer))
 
@@ -109,13 +127,17 @@ object TextClassifier {
     var testFeatures = pipeline.fit(test).transform(test)
 
     val numClasses = trainFeatures.select("label").distinct().count.toInt
-    val output = Range(0, numClasses).map(x => trainClassifier(x, trainFeatures)).reduce((x, y) => x.join(y, Seq("id", "answerId")))
+    val output = Range(0, numClasses)
+      .map(x => trainClassifier(x, trainFeatures, testFeatures))
+      .reduce((x, y) => x.join(y, Seq("id", "answerId")))
 
     // also add original label column
     val liOut = labelIndexer.fit(output).transform(output)
 
     // vector assembler to assemble all probabilities in one vector
-    val assembler = new VectorAssembler().setInputCols(Range(0, numClasses).map(x => "prob" + x).toArray).setOutputCol("allProbs")
+    val assembler = new VectorAssembler()
+      .setInputCols(Range(0, numClasses).map(x => "prob" + x).toArray)
+      .setOutputCol("allProbs")
     val asOut = assembler.transform(liOut)
     val predictions = asOut.select("id", "answerId", "label", "allProbs")
 
@@ -133,7 +155,8 @@ object TextClassifier {
       rankArr(arrIndex)
     }
 
-    val finalOut = predictions.withColumn("rank", getRank(col("allProbs"), col("label")))
+    val finalOut = predictions.withColumn("rank",
+      getRank(col("allProbs"), col("label")))
     finalOut.select(avg(col("rank"))).show()
   }
 
