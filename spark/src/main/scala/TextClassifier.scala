@@ -9,52 +9,21 @@ import org.apache.spark.{SparkConf, SparkContext}
 
 object TextClassifier {
 
-  def trainClassifier(index: Integer, train: DataFrame, test: DataFrame) = {
-    val labelColName = "ovrLabel" + index
-    val trainingDataset = train.withColumn(labelColName,
-      when(col("label") === index.toDouble, 1.0).otherwise(0.0))
-
-    // weight col
-    val negatives = trainingDataset.filter(trainingDataset(labelColName) === 0).count
-    val size = trainingDataset.count
-    val ratio = (size - negatives).toDouble / size
-
-    val calculateWt = udf { d: Double =>
-      if (d == 0.0) {
-        1 * ratio
-      } else {
-        1 * (1 - ratio)
-      }
-    }
-
-    val weightedTrainingDataset = trainingDataset.withColumn("classWeight",
-      calculateWt(trainingDataset(labelColName)))
-
-    val classifier = new LogisticRegression()
-      .setFeaturesCol("features")
-      .setLabelCol(labelColName)
-      .setProbabilityCol("prob")
-
-    val out = classifier.fit(weightedTrainingDataset).transform(weightedTrainingDataset)
-
-    val vectorToColumn = udf { (x: DenseVector, index: Int) => x(index) }
-
-    out.withColumn("prob" + index, vectorToColumn(col("prob"), lit(1)))
-      .select("id", "answerId", "prob" + index)
-  }
-
   def main(args: Array[String]): Unit = {
     val sc = new SparkContext(new SparkConf())
-    val spark = SparkSession.builder.appName("Text Classifier").getOrCreate()
+    val spark = SparkSession.builder.appName("qna-matching").getOrCreate()
 
-    if (args.length != 3) {
-      println("Three arguments needed")
+    // TODO: integrate a command line parser
+    if (args.length != 2) {
+      println("Two arguments needed: path to questions.csv and duplicates.csv")
     }
 
-    Logger.getLogger("qa-matching").setLevel(Level.OFF)
+    Logger.getLogger("qna-matching").setLevel(Level.OFF)
     spark.sparkContext.setLogLevel("ERROR")
 
     // Read data
+    // TODO: If location is a S3 path, check if compressed version of files are supported
+    // Refer https://docs.aws.amazon.com/emr/latest/ManagementGuide/HowtoProcessGzippedFiles.html
     var questions = spark.read.option("header", "false")
       .format("csv")
       .option("delimiter", "\t")
@@ -69,20 +38,20 @@ object TextClassifier {
       .load(args(1))
       .toDF("id", "answerId", "text", "date")
 
-    var answers = spark.read.option("header", "false")
-      .format("csv")
-      .option("delimiter", "\t")
-      .load(args(2))
-      .toDF("id", "text")
-
-    // Temp views for programmatically querying using SQL
+    // Create temp views for programmatically querying using SQL
     questions.createOrReplaceTempView("questions")
     duplicates.createOrReplaceTempView("duplicates")
-    answers.createOrReplaceTempView("answers")
 
-    // appending rank
-    val duplicatesRanked = spark.sql("select d.id, d.answerId, d.text, d.date, percent_rank() over (partition by d.answerId order by d.date) as rank from duplicates d")
-    val data = duplicatesRanked.withColumn("cleanText", regexp_replace(col("text"), lit("<pre><code>.*?</code></pre>|<[^>]+>|<a[^>]+>(.*)</a>|"), lit("")))
+    // appending rank to split dataset into train and test
+    val duplicatesRanked = spark.sql(
+      """
+        |select d.id, d.answerId, d.text, d.date,
+        |percent_rank() over (partition by d.answerId order by d.date) as rank
+        |from duplicates d
+      """.stripMargin)
+    val data = duplicatesRanked.withColumn("cleanText",
+      regexp_replace(col("text"),
+        lit("<pre><code>.*?</code></pre>|<[^>]+>|<a[^>]+>(.*)</a>|"), lit("")))
     data.createOrReplaceTempView("data")
 
     var train = spark.sql("select id, answerId, text, date from data where rank < 0.75")
@@ -96,7 +65,10 @@ object TextClassifier {
     train.createOrReplaceTempView("train")
 
     // select only those answers that have at least some number of duplicate questions in training set
-    var usefulAnswers = spark.sql("select answerId, count(id) as n_samples from train group by answerId having n_samples > 150")
+    // default should be 12 or 13, increase to 150 for testing (vastly reduces size of training dataset)
+    val threshold = 150
+    var usefulAnswers = spark.sql(
+      s"select answerId, count(id) as n_samples from train group by answerId having n_samples > $threshold")
     usefulAnswers.createOrReplaceTempView("usefulAnswers")
 
     train = spark.sql("select * from train where answerId in (select answerId from usefulAnswers)")
@@ -141,6 +113,7 @@ object TextClassifier {
     val asOut = assembler.transform(liOut)
     val predictions = asOut.select("id", "answerId", "label", "allProbs")
 
+    // Get rank of an array, example [5, 2, 8, 3] => [3, 1, 4, 2]
     val getRank = udf { (prob: DenseVector, label: Double) =>
       val arrIndex = label.toInt
       val probArr = prob.toArray
@@ -157,7 +130,42 @@ object TextClassifier {
 
     val finalOut = predictions.withColumn("rank",
       getRank(col("allProbs"), col("label")))
+
+    // prints the mean rank for this classifier
     finalOut.select(avg(col("rank"))).show()
   }
 
+  def trainClassifier(index: Integer, train: DataFrame, test: DataFrame) = {
+    val labelColName = "ovrLabel" + index
+    val trainingDataset = train.withColumn(labelColName,
+      when(col("label") === index.toDouble, 1.0).otherwise(0.0))
+
+    // weight column to handle imbalanced datasets
+    val negatives = trainingDataset.filter(trainingDataset(labelColName) === 0).count
+    val size = trainingDataset.count
+    val ratio = (size - negatives).toDouble / size
+
+    val calculateWt = udf { d: Double =>
+      if (d == 0.0) {
+        1 * ratio
+      } else {
+        1 * (1 - ratio)
+      }
+    }
+
+    val weightedTrainingDataset = trainingDataset.withColumn("classWeight",
+      calculateWt(trainingDataset(labelColName)))
+
+    val classifier = new LogisticRegression()
+      .setFeaturesCol("features")
+      .setLabelCol(labelColName)
+      .setProbabilityCol("prob")
+
+    val out = classifier.fit(weightedTrainingDataset).transform(weightedTrainingDataset)
+
+    val vectorToColumn = udf { (x: DenseVector, index: Int) => x(index) }
+
+    out.withColumn("prob" + index, vectorToColumn(col("prob"), lit(1)))
+      .select("id", "answerId", "prob" + index)
+  }
 }
