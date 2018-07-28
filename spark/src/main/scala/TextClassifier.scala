@@ -25,15 +25,15 @@ object TextClassifier {
     // TODO: If location is a S3 path, check if compressed version of files are supported
     // Refer https://docs.aws.amazon.com/emr/latest/ManagementGuide/HowtoProcessGzippedFiles.html
     var questions = spark.read.option("header", "false")
-      .format("csv")
-      .option("delimiter", "\t")
+      .format("parquet")
+      // .option("delimiter", "\t")
       .option("inferSchema", "true")
       .load(args(0))
       .toDF("id", "answerId", "text", "date")
 
     var duplicates = spark.read.option("header", "false")
-      .format("csv")
-      .option("delimiter", "\t")
+      .format("parquet")
+      // .option("delimiter", "\t")
       .option("inferSchema", "true")
       .load(args(1))
       .toDF("id", "answerId", "text", "date")
