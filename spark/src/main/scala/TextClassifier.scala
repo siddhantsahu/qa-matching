@@ -161,7 +161,7 @@ object TextClassifier {
       .setLabelCol(labelColName)
       .setProbabilityCol("prob")
 
-    val out = classifier.fit(weightedTrainingDataset).transform(weightedTrainingDataset)
+    val out = classifier.fit(weightedTrainingDataset).transform(test)
 
     val vectorToColumn = udf { (x: DenseVector, index: Int) => x(index) }
 
