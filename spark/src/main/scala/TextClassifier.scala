@@ -24,19 +24,13 @@ object TextClassifier {
     // Read data
     // TODO: If location is a S3 path, check if compressed version of files are supported
     // Refer https://docs.aws.amazon.com/emr/latest/ManagementGuide/HowtoProcessGzippedFiles.html
-    var questions = spark.read.option("header", "false")
+    var questions = spark.read
       .format("parquet")
-      // .option("delimiter", "\t")
-      .option("inferSchema", "true")
       .load(args(0))
-      .toDF("id", "answerId", "text", "date")
 
-    var duplicates = spark.read.option("header", "false")
+    var duplicates = spark.read
       .format("parquet")
-      // .option("delimiter", "\t")
-      .option("inferSchema", "true")
       .load(args(1))
-      .toDF("id", "answerId", "text", "date")
 
     // Create temp views for programmatically querying using SQL
     questions.createOrReplaceTempView("questions")
@@ -46,13 +40,10 @@ object TextClassifier {
     val duplicatesRanked = spark.sql(
       """
         |select d.id, d.answerId, d.text, d.date,
-        |percent_rank() over (partition by d.answerId order by d.date) as rank
+        |percent_rank() over (partition by d.answerId order by rand()) as rank
         |from duplicates d
       """.stripMargin)
-    val data = duplicatesRanked.withColumn("cleanText",
-      regexp_replace(col("text"),
-        lit("<pre><code>.*?</code></pre>|<[^>]+>|<a[^>]+>(.*)</a>|"), lit("")))
-    data.createOrReplaceTempView("data")
+    duplicatesRanked.createOrReplaceTempView("data")
 
     var train = spark.sql("select id, answerId, text, date from data where rank < 0.75")
     var test = spark.sql("select id, answerId, text, date from data where rank >= 0.75")
@@ -66,13 +57,22 @@ object TextClassifier {
 
     // select only those answers that have at least some number of duplicate questions in training set
     // default should be 12 or 13, increase to 150 for testing (vastly reduces size of training dataset)
-    val threshold = 150
+    val threshold = 50
     var usefulAnswers = spark.sql(
       s"select answerId, count(id) as n_samples from train group by answerId having n_samples > $threshold")
     usefulAnswers.createOrReplaceTempView("usefulAnswers")
 
     train = spark.sql("select * from train where answerId in (select answerId from usefulAnswers)")
     test = spark.sql("select * from test where answerId in (select answerId from usefulAnswers)")
+
+    // clean text
+    train = train.withColumn("cleanText",
+      regexp_replace(col("text"),
+        lit("<pre><code>.*?</code></pre>|<[^>]+>|<a[^>]+>(.*)</a>|"), lit("")))
+
+    test = test.withColumn("cleanText",
+      regexp_replace(col("text"),
+        lit("<pre><code>.*?</code></pre>|<[^>]+>|<a[^>]+>(.*)</a>|"), lit("")))
 
     // now, set up pipeline
     val tokenizer = new Tokenizer()
