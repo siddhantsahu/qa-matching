@@ -18,9 +18,9 @@ def main():
     args = parser.parse_args()
 
     conn = sqlite3.connect(args.sqlite_db)
-    date_col = args.get('date_column', None)
-    if date_col:
-        df = pd.read_csv(args.csv_file, encoding='latin1', parse_dates=[date_col])
+    
+    if args.date_column:
+        df = pd.read_csv(args.csv_file, encoding='latin1', parse_dates=[args.date_column])
     else:
         df = pd.read_csv(args.csv_file, encoding='latin1')
     df.to_sql(args.table_name, conn, if_exists='replace', chunksize=args.chunksize)

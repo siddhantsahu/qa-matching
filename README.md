@@ -3,6 +3,10 @@
 ### Load stacksample data onto a local SQLite Database
 Use `scripts/csv_to_sql.py` to load all 4 csv files - questions, answers, tags and postlinks into tables of the *same name*. to a local SQLite database, say `stack.db`. Store this in your data folder.
 
+Example run command: `python csv_to_sql.py --date_column CreationDate ../data/stack.db ../data/working/stacksample/Questions.csv questions`
+
+For datasets that do not have a date column (or if we don't need parsing date column), drop the optional argument `--date_column`.
+
 ### Run Spark ETL job
 - Download [SQLite JDBC jar file](https://bitbucket.org/xerial/sqlite-jdbc/downloads/sqlite-jdbc-3.23.1.jar)
 - Run ETL pipeline job as follows:
