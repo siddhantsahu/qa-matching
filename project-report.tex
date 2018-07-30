@@ -19,7 +19,10 @@
 \maketitle
 
 \section{Abstract}
-One non-trivial community that was constructed and which is growing rapidly on a simple idea of asking questions pertaining to wide variety of technological questions and seeking relevant answers is Stack Overflow. Stack Overflow has been the host for over 16 million questions by mid 2018. With such a large number of questions, it becomes often too difficult to manage the data and more often than not, there would have been a similar question which would have been asked previously. With this project we try to address that issue using Big Data techniques and technologies to be identifying duplicate questions and point them towards the original (previously asked) question’s accepted answer. We will be presented the data with questions posted using various tags such as python, java, javascript, etc. Our intention is to identify these repetitive questions based on these tags and reduce redundancy using bag-of-words approach.
+One non-trivial community that was constructed and which is growing rapidly on a simple idea of asking questions pertaining to wide variety of technological questions and seeking relevant answers is Stack Overflow. Stack Overflow has been the host for over 16 million questions by mid 2018. With such a large number of questions, more often than not, there would have been a similar question which would have been asked previously. With this project, we try to address that issue  by identifying duplicate questions. We will be presented the data with questions posted using various tags such as python, java, javascript, etc. Our intention is to identify these repetitive questions based on these tags and reduce redundancy using a bag-of-words approach.
+
+\section{Related Work}
+One of the quickest ways to find a solution to a common question is most likely to be found in FAQ (Frequently Answered Questions) section of most organizations. FAQs are as nearly as perfect as it gets to answer open ended questions by multiple users online. The idea is to match an open-ended question to a pre-formatted FAQ. There is been a lot of research being done in this domain and there have been multiple approaches as well. To name a few, in \textit{An Effective Similarity Measurement for FAQ Question Answering System}\cite{{paper1}}, the author addresses the problems by using a semantic knowledge base in order to improve its ability to match a particular question to its relevant answer. In \textit{Ontology-supported FAQ processing and ranking techniques}\cite{paper2}, speaks about an enhanced ranking technique to show query relevant answers by accumulating FAQ information from heterogeneous sources and saves in on an ontological database. The irrelevant words are trimmed, and a partial or full word match is run in-order to get relevant results during the retrieval of FAQs.
 
 \section{Dataset}
 \subsection{Raw Data}
@@ -42,7 +45,7 @@ The raw data has a lot of information that is not directly relevant to our main 
 Spark\cite{spark} is unable to parse multi-line csv files even after the added support in Spark 2.2. Thus, for our experiments, we created an ETL pipeline as follows to convert the raw data to processed data.
 \begin{enumerate}
 	\item Parse csv files using pandas\cite{pandas} (pandas has excellent support for parsing csv files, including multi-line csv files) and load it into sqlite database. Also parse the xml file in python, create a csv file and load it into the sqlite\cite{sqlite} database.
-	\item Since the process involves joins and the csv files are too big to fit in memory, we rely on Spark SQL to do the joins.
+	\item Since the process involves joins and the csv files are too big to fit in memory, we rely on Spark SQL to do the joins and save the final output to parquet files.
 \end{enumerate}
 
 \section{Methodology}
@@ -53,9 +56,9 @@ Duplicates are those questions that have the same answer as the original questio
 We use only the text column to determine duplicates. Limited on time, we choose only the feature extraction methods provided by Spark ML. The first step is to clean the body of the post -- this means removing code blocks, html tags and urls/links. We use a bag-of-words model to determine the vector embedding for the words. We tokenize the text, remove stopwords and compute the tf-idf score for each word and limit the vocabulary to 500 words.
 
 \subsection{Modeling}
-We formulate the problem as a classification problem -- with the task of classifying which answerID is the most likely answer for a given question. In simple terms, the input is a list of question-answer pairs (including duplicates) for a particular \textit{tag}. For a new question, our model returns as output, a list of scores for each answer class in the training set.
+We formulate the problem as a classification problem -- with the task of classifying which answerID is the most likely answer for a given question. In simple terms, the input is a list of question-answer pairs (including duplicates) for a particular \textit{tag}. For a new question, our model returns as output, a list of scores for each answer class in the training set.\\
 
-We use the \textit{One-vs-Rest} strategy to break down this multi-class classification problem into several binary classification problems. Spark's One-vs-Rest classifier does a great job but doesn't output probabilities of classes. So, we write a custom one-vs-rest classifier with Logistic Regression as the underlying algorithm to tackle this problem.
+We use the \textit{One-vs-Rest} strategy to break down this multi-class classification problem into several binary classification problems. Spark's One-vs-Rest classifier does a great job but doesn't output probabilities of classes. So, we write a custom one-vs-rest classifier with Logistic Regression as the underlying algorithm to tackle this problem.\\
 
 With popular tags, like \texttt{javascript} or \texttt{java}, with a lot of questions, the number of answer classes can be as high as 300 even after the pre-processing step. This presents an imbalanced classification problem for each underlying classifier. For example, some answer classes will have a few positive examples when compared with the rest of the dataset (negative examples). One solution is to take a random subset of the negative examples so that the overall ratio of positive to negative examples is balanced. However, this approach involves writing a custom function to subsample negative examples and is also troublesome while combining outputs from all classifiers. Thus, we resorted to using the weights approach while training Logistic Regression models. We specified weights for both positive and negative examples in each class that effectively imposes a much larger penalty on misclassifying the positive class.
 
@@ -66,6 +69,7 @@ We use average rank to evaluate our classifier. Average rank is a learning-to-ra
 
 \section{Experiments}
 We ran a few experiments -- classifiers for tags \texttt{python}, \texttt{java} and \texttt{javascript}
+Java 2.27
 
 \begin{thebibliography}{1}
 	
@@ -75,7 +79,11 @@ We ran a few experiments -- classifiers for tags \texttt{python}, \texttt{java} 
 	
 	\bibitem{pandas} Pandas \texttt{https://pandas.pydata.org/} 
 	
-	\bibitem{sqlite} SQLite \texttt{https://www.sqlite.org/index.html} Section 1.4.
+	\bibitem{sqlite} SQLite \texttt{https://www.sqlite.org/index.html}
+	
+	\bibitem{paper1} Juan, Zhong Min. "An effective similarity measurement for faq question answering system." \textit{Electrical and Control Engineering (ICECE), 2010 International Conference} on. IEEE, 2010.
+	
+	\bibitem{paper2} Yang, Sheng-Yuan, Fang-Chen Chuang, and Cheng-Seen Ho. "Ontology-supported FAQ processing and ranking techniques." \textit{Journal of Intelligent Information Systems} 28.3 (2007): 233-251.
 	
 \end{thebibliography}
 

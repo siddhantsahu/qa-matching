@@ -14,8 +14,8 @@ object TextClassifier {
     val spark = SparkSession.builder.appName("qna-matching").getOrCreate()
 
     // TODO: integrate a command line parser
-    if (args.length != 2) {
-      println("Two arguments needed: path to questions.csv and duplicates.csv")
+    if (args.length != 3) {
+      println("Three arguments needed: pathToQuestions, pathToDuplicates, outputFilePath")
     }
 
     Logger.getLogger("qna-matching").setLevel(Level.OFF)
@@ -56,8 +56,9 @@ object TextClassifier {
     train.createOrReplaceTempView("train")
 
     // select only those answers that have at least some number of duplicate questions in training set
-    // default should be 12 or 13, increase to 150 for testing (vastly reduces size of training dataset)
-    val threshold = 50
+    // default should be 12 or 13, increase to 50 or more for testing (vastly reduces size of training dataset)
+    val threshold = 20
+    var details = s"Minimum number of questions linked to an answer: $threshold"
     var usefulAnswers = spark.sql(
       s"select answerId, count(id) as n_samples from train group by answerId having n_samples > $threshold")
     usefulAnswers.createOrReplaceTempView("usefulAnswers")
@@ -75,6 +76,8 @@ object TextClassifier {
         lit("<pre><code>.*?</code></pre>|<[^>]+>|<a[^>]+>(.*)</a>|"), lit("")))
 
     // now, set up pipeline
+    val numTerms = 300
+    details += s"\nNumber of terms: $numTerms"
     val tokenizer = new Tokenizer()
       .setInputCol("cleanText")
       .setOutputCol("tokenizerOut")
@@ -84,7 +87,7 @@ object TextClassifier {
     val hashingTf = new HashingTF()
       .setInputCol(stopWordsFilter.getOutputCol)
       .setOutputCol("hashingTfOut")
-      .setNumFeatures(50)
+      .setNumFeatures(numTerms)
     val idf = new IDF()
       .setInputCol(hashingTf.getOutputCol)
       .setOutputCol("features")
@@ -99,6 +102,7 @@ object TextClassifier {
     var testFeatures = pipeline.fit(test).transform(test)
 
     val numClasses = trainFeatures.select("label").distinct().count.toInt
+    details += s"\nNumber of answer classes: $numClasses"
     val output = Range(0, numClasses)
       .map(x => trainClassifier(x, trainFeatures, testFeatures))
       .reduce((x, y) => x.join(y, Seq("id", "answerId")))
@@ -131,8 +135,11 @@ object TextClassifier {
     val finalOut = predictions.withColumn("rank",
       getRank(col("allProbs"), col("label")))
 
-    // prints the mean rank for this classifier
-    finalOut.select(avg(col("rank"))).show()
+    val avgRank = finalOut.select(avg(col("rank"))).head().getDouble(0)
+    details += s"\nAverage rank: $avgRank"
+
+    // write to file or s3 - third argument
+    sc.parallelize(List(details)).coalesce(1).saveAsTextFile(args(2))
   }
 
   def trainClassifier(index: Integer, train: DataFrame, test: DataFrame) = {
