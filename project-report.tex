@@ -5,8 +5,10 @@
 \usepackage{enumerate}
 \usepackage{pgfplots}
 \usepackage{filecontents}
+\usepackage{multirow}
 \usepackage{subcaption}
 \usepackage[margin=1in]{geometry}
+\graphicspath{{../}}
 
 \title{QnA Matching for Stack Overflow\\
 	\large CS 6350 Summer 2018: Final Project Report}
@@ -50,7 +52,26 @@ Spark\cite{spark} is unable to parse multi-line csv files even after the added s
 
 \section{Methodology}
 \subsection{Pre-processing}
-Duplicates are those questions that have the same answer as the original question. We consider these questions equivalent, semantically. For training the classifier for a tag, we choose a subset of answers each of which has at least 13 or 14 duplicate questions linked. This ensures sufficient data is available per answer class to train the classifier.
+Duplicates are those questions that have the same answer as the original question. We consider these questions equivalent, semantically. In the table below is the distribution of answer classes against the number of duplicate questions linked for tag \texttt{python}. Almost 90\% of the answers are linked to 4 or fewer questions. It is prohibitively expensive and doesn't yield as much benefit to train the algorithm for all the answer classes. Therefore, we set our threshold to a number between 10-15 answer classes while training the classifier.
+
+\begin{center}
+	\begin{tabular}
+		{|c c|} 
+		\hline
+		Duplicates count & Number of answer classes\\ 
+		\hline\hline
+		1-2 & 1653 \\ 
+		\hline
+		3-4 & 198 \\
+		\hline
+		5-10 & 121 \\
+		\hline
+		11-20 & 34 \\
+		\hline
+		21+ & 26 \\
+		\hline
+	\end{tabular}
+\end{center}
 
 \subsection{Feature Extraction}
 We use only the text column to determine duplicates. Limited on time, we choose only the feature extraction methods provided by Spark ML. The first step is to clean the body of the post -- this means removing code blocks, html tags and urls/links. We use a bag-of-words model to determine the vector embedding for the words. We tokenize the text, remove stopwords and compute the tf-idf score for each word and limit the vocabulary to 500 words.
@@ -60,7 +81,7 @@ We formulate the problem as a classification problem -- with the task of classif
 
 We use the \textit{One-vs-Rest} strategy to break down this multi-class classification problem into several binary classification problems. Spark's One-vs-Rest classifier does a great job but doesn't output probabilities of classes. So, we write a custom one-vs-rest classifier with Logistic Regression as the underlying algorithm to tackle this problem.\\
 
-With popular tags, like \texttt{javascript} or \texttt{java}, with a lot of questions, the number of answer classes can be as high as 300 even after the pre-processing step. This presents an imbalanced classification problem for each underlying classifier. For example, some answer classes will have a few positive examples when compared with the rest of the dataset (negative examples). One solution is to take a random subset of the negative examples so that the overall ratio of positive to negative examples is balanced. However, this approach involves writing a custom function to subsample negative examples and is also troublesome while combining outputs from all classifiers. Thus, we resorted to using the weights approach while training Logistic Regression models. We specified weights for both positive and negative examples in each class that effectively imposes a much larger penalty on misclassifying the positive class.
+With popular tags, like \texttt{javascript} or \texttt{java}, with a lot of questions, the number of answer classes can be as high as 200 or 250 even after the pre-processing step. This presents an imbalanced classification problem for each underlying classifier. For example, some answer classes will have a few positive examples when compared with the rest of the dataset (negative examples). One solution is to take a random subset of the negative examples so that the overall ratio of positive to negative examples is balanced. However, this approach involves writing a custom function to subsample negative examples and is also troublesome while combining outputs from all classifiers. Thus, we resorted to using the weights approach while training Logistic Regression models. We specified weights for both positive and negative examples in each class that effectively imposes a much larger penalty on misclassifying the positive class.
 
 \subsection{Evaluation}
 We use stratified random sampling to split our data into training (75\%) and test sets (25\%). Stratified sampling proportionately allocates 75\% of the questions \textit{per answer class} in the training set and the rest in the test set. Spark doesn't have an inbuilt method for stratified sampling so we use a different approach using Window functions and rank function to accomplish this.\\
