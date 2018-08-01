@@ -81,7 +81,7 @@ We formulate the problem as a classification problem -- with the task of classif
 
 We use the \textit{One-vs-Rest} strategy to break down this multi-class classification problem into several binary classification problems. Spark's One-vs-Rest classifier does a great job but doesn't output probabilities of classes. So, we write a custom one-vs-rest classifier with Logistic Regression as the underlying algorithm to tackle this problem.\\
 
-With popular tags, like \texttt{javascript} or \texttt{java}, with a lot of questions, the number of answer classes can be as high as 200 or 250 even after the pre-processing step. This presents an imbalanced classification problem for each underlying classifier. For example, some answer classes will have a few positive examples when compared with the rest of the dataset (negative examples). One solution is to take a random subset of the negative examples so that the overall ratio of positive to negative examples is balanced. However, this approach involves writing a custom function to subsample negative examples and is also troublesome while combining outputs from all classifiers. Thus, we resorted to using the weights approach while training Logistic Regression models. We specified weights for both positive and negative examples in each class that effectively imposes a much larger penalty on misclassifying the positive class.
+With popular tags, like \texttt{javascript} or \texttt{java}, with a lot of questions, the number of answer classes can be as high as 200 or 250 even after the pre-processing step. This presents an imbalanced classification problem for each underlying classifier. For example, some answer classes will have a few positive examples when compared with the rest of the dataset (negative examples). One solution is to take a random subset of the negative examples so that the overall ratio of positive to negative examples is balanced. However, this approach involves writing a custom function to subsample negative examples and is also troublesome while combining outputs from all classifiers. Thus, we resorted to using the weights approach while training Logistic Regression models. We specified weights for both positive and negative examples in each class that effectively imposes a much larger penalty on misclassifying the positive class. Specifically, if there are $p$ positive examples (usually fewer than the number of negative examples) and the size of the dataset is $n$, we assign a weight of $\frac{n-p}{n}$ to the positive examples and $\frac{p}{n}$ to the negative examples. If there are $k$ answer classes, we train $k$ binary classifiers for each of the answer class and collect the coefficients of the positive examples across all classifiers to rank them.
 
 \subsection{Evaluation}
 We use stratified random sampling to split our data into training (75\%) and test sets (25\%). Stratified sampling proportionately allocates 75\% of the questions \textit{per answer class} in the training set and the rest in the test set. Spark doesn't have an inbuilt method for stratified sampling so we use a different approach using window and rank function to accomplish this.\\
@@ -91,7 +91,7 @@ With our current choice of training strategy, i.e. One-vs-rest, using cross-vali
 We use average rank to evaluate our classifier. Average rank is a learning-to-rank evaluation metric that calculates the average rank of the correct answer class in the list of all answer classes. Essentially, the closer this metric is to 1, the better.
 
 \section{Experiments}
-We ran a few experiments -- classifiers for the most popular tags  on stackoverflow: \texttt{python}, \texttt{java} and \texttt{javascript}
+We ran a few experiments -- classifiers for the most popular tags  on stackoverflow: \texttt{python}, \texttt{java} and \texttt{javascript}. For our experiments, we chose the threshold on the minimum number of duplicate questions per answer class to be 20 and the number of features for tf-idf to be 300.
 
 \begin{center}
 	\begin{tabular}
@@ -103,21 +103,18 @@ We ran a few experiments -- classifiers for the most popular tags  on stackoverf
 		\hline
 		javascript & 2.87 \\
 		\hline
-		python & 2.1 \\
-		\hline
-		android & 3 \\
+		python & 4.4 \\
 		\hline
 	\end{tabular}
 \end{center}
-
 
 \section{Future Work}
 There is ample scope of improvement of our model. Given more time and computational power, we'd like to explore along the following areas.
 
 \begin{itemize}
 	\item Use word2vec embeddings instead of tf-idf scores.
-	\item Formulate it as a ranking problem, that can be solved using xgboost.
-	\item Learn useful phrases (otherwise known as collocations) to see how they impact the overall rank.
+	\item Formulate it as a ranking problem, that can be solved using the xgboost library.
+	\item Learn useful phrases (also known as \textit{collocations}) to see how they impact the overall rank.
 	\item Use syntactic features by learning Part-of-speech tags in text. In addition, use several word level and sentence level features.
 	\item Explore deep learning and ensemble models.
 \end{itemize}
