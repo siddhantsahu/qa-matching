@@ -38,10 +38,24 @@ We use the StackSample\cite{dataset} dataset, a dataset curated by Stack Overflo
 
 \subsection{Processed Data}
 The raw data has a lot of information that is not directly relevant to our main classifier module. The processed data has the following schema:
-\begin{enumerate}
-	\item \texttt{orig-q.parquet}: raw text, answer IDs and date for each question
-	\item \texttt{dup-q.parquet}: raw text, answer IDs and date for each duplicate question
-\end{enumerate}
+
+\begin{center}
+	\begin{tabular}{ |c|c|c|c|c| } 
+		\hline
+		Dataset & Field & Type & Description \\
+		\hline
+		\multirow{4}{4em}{questions} & id & Integer & Question id (primary key) \\ 
+		& answerId & Integer & Unique answer id for a question \\ 
+		& date & Timestamp & Date and time when the question was first asked \\ 
+		& text & String & The raw text of the body of the question \\
+		\hline
+		\multirow{4}{4em}{duplicates} & id & Integer & Duplication id (primary key) \\ 
+		& answerId & Integer & Unique answer id for the duplicate question \\ 
+		& date & Timestamp & Date and time when the duplicate question was first asked \\ 
+		& text & String & The raw text of the body of the duplicate \\
+		\hline
+	\end{tabular}
+\end{center}
 
 \subsection{ETL Pipeline}
 Spark\cite{spark} is unable to parse multi-line csv files even after the added support in Spark 2.2. Thus, for our experiments, we created an ETL pipeline as follows to convert the raw data to processed data.
@@ -91,7 +105,7 @@ With our current choice of training strategy, i.e. One-vs-rest, using cross-vali
 We use average rank to evaluate our classifier. Average rank is a learning-to-rank evaluation metric that calculates the average rank of the correct answer class in the list of all answer classes. Essentially, the closer this metric is to 1, the better.
 
 \section{Experiments}
-We ran a few experiments -- classifiers for the most popular tags  on stackoverflow: \texttt{python}, \texttt{java} and \texttt{javascript}. For our experiments, we chose the threshold on the minimum number of duplicate questions per answer class to be 20 and the number of features for tf-idf to be 300.
+We ran a few experiments -- classifiers for the most popular tags  on stackoverflow: \texttt{python}, \texttt{java} and \texttt{javascript}. For our experiments, we chose the threshold on the minimum number of duplicate questions per answer class to be 20 (ideally, it should be around 12-13 but that takes too long to finish because of the dramatic increase in the number of answer classes) and the number of features for tf-idf to be 300.\\
 
 \begin{center}
 	\begin{tabular}
@@ -108,6 +122,11 @@ We ran a few experiments -- classifiers for the most popular tags  on stackoverf
 	\end{tabular}
 \end{center}
 
+
+\textbf{Setup:} One master instance of \textbf{m4.large} and 6 task instances of \textbf{m4.large} machines.\\
+
+\textbf{Time:} Average time taken per tag was approximately 30 minutes. We found this prohibitively expensive and didn't pursue the experiment using the entire Stack Overflow data. Recall that this is just 10\% of entire Stack Overflow's data and we have already set a high threshold (20) on the minimum number of duplicate questions.
+
 \section{Future Work}
 There is ample scope of improvement of our model. Given more time and computational power, we'd like to explore along the following areas.
 
@@ -115,8 +134,17 @@ There is ample scope of improvement of our model. Given more time and computatio
 	\item Use word2vec embeddings instead of tf-idf scores.
 	\item Formulate it as a ranking problem, that can be solved using the xgboost library.
 	\item Learn useful phrases (also known as \textit{collocations}) to see how they impact the overall rank.
-	\item Use syntactic features by learning Part-of-speech tags in text. In addition, use several word level and sentence level features.
+	\item Use syntactic features by learning \textit{part-of-speech} tags in text. In addition, use several word level and sentence level features.
 	\item Explore deep learning and ensemble models.
+\end{itemize}
+
+
+\section{Contribution}
+\begin{itemize}
+	\item Ram Anand Vutukuru: He 80\% of his time on ETL tasks, i.e. setting up pipeline to parse raw data, load it to SQLite database and create processed data. 20\% on the code to build the classifier pipeline, especially the initial data cleaning phase.
+	\item Siddhant Sahu: Most of his time was spent in building the pipeline, writing the custom one-vs-rest classifier and evaluation metric and running experiments on EMR.
+	
+	Both contributed equally in writing the report -- initial sections were written by Ram and later sections by Siddhant.
 \end{itemize}
 
 
