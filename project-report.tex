@@ -102,7 +102,13 @@ We use stratified random sampling to split our data into training (75\%) and tes
 
 With our current choice of training strategy, i.e. One-vs-rest, using cross-validation and hyperparameter tuning was out of the question, mainly because the model was too expensive computationally.\\
 
-We use average rank to evaluate our classifier. Average rank is a learning-to-rank evaluation metric that calculates the average rank of the correct answer class in the list of all answer classes. Essentially, the closer this metric is to 1, the better.
+We use \textbf{average rank} to evaluate our classifier. Average rank is a learning-to-rank evaluation metric that calculates the average rank of the correct answer class in the list of all answer classes. Essentially, the closer this metric is to 1, the better.\\
+
+The average rank, $AR$ for the evaluation set is given by:
+
+$$AR = \frac{\sum_{\forall i \in N} \text{Rank of correct answer}_i}{N}$$
+
+where $N$ = number of questions in the evaluation set.
 
 \section{Experiments}
 We ran a few experiments -- classifiers for the most popular tags  on stackoverflow: \texttt{python}, \texttt{java} and \texttt{javascript}. For our experiments, we chose the threshold on the minimum number of duplicate questions per answer class to be 20 (ideally, it should be around 12-13 but that takes too long to finish because of the dramatic increase in the number of answer classes) and the number of features for tf-idf to be 300.\\
@@ -141,7 +147,7 @@ There is ample scope of improvement of our model. Given more time and computatio
 
 \section{Contribution}
 \begin{itemize}
-	\item Ram Anand Vutukuru: He 80\% of his time on ETL tasks, i.e. setting up pipeline to parse raw data, load it to SQLite database and create processed data. 20\% on the code to build the classifier pipeline, especially the initial data cleaning phase.
+	\item Ram Anand Vutukuru: 80\% of his time on ETL tasks, i.e. setting up pipeline to parse raw data, load it to SQLite database and create processed data. 20\% on the code to build the classifier pipeline, especially the initial data cleaning phase.
 	\item Siddhant Sahu: Most of his time was spent in building the pipeline, writing the custom one-vs-rest classifier and evaluation metric and running experiments on EMR.
 	
 	Both contributed equally in writing the report -- initial sections were written by Ram and later sections by Siddhant.

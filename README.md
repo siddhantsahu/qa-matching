@@ -23,14 +23,11 @@ The extra parameters `--conf spark.executor.extraClassPath` and `--driver-class-
 This creates two `parquet` files on the output directory, partitioned by `tag`.
 
 ### Run Classifier Pipeline
-NOTE: Currently, the module is set to read `parquet` files (*see lines 28 and 35 of TextClassifier.scala*).
-
-- For quick end-to-end testing, set `threshold` (*see line 69*) to 150 or 160. This reduces the size of training dataset. For a proper run, set it to 12 or 13.
-- Compress files (for one tag) in parquet form to `gzip` format. [See why](https://docs.aws.amazon.com/emr/latest/ManagementGuide/HowtoProcessGzippedFiles.html).
-- Upload the compressed files to S3. The platform *should* automatically handle compressed files.
+- For quick end-to-end testing, set `threshold` to 30. This reduces the size of training dataset. For a proper run, set it to 12 or 13. This takes a lot of time.
+- Upload the parquet files to S3.
 - Run a Spark job (on EMR) as follows:
 ```
 ./bin/spark-submit
     --class TextClassifier
-    compiledAppJar-s3Path orig-q-s3Path dup-q-s3Path
+    compiledAppJar-s3Path orig-q-s3Path dup-q-s3Path output-s3Path
 ```
