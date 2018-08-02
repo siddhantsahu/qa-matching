@@ -36,6 +36,7 @@ object TextClassifier {
     questions.createOrReplaceTempView("questions")
     duplicates.createOrReplaceTempView("duplicates")
 
+    // stratified sampling by answerId
     // appending rank to split dataset into train and test
     val duplicatesRanked = spark.sql(
       """

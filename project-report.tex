@@ -60,13 +60,13 @@ The raw data has a lot of information that is not directly relevant to our main 
 \subsection{ETL Pipeline}
 Spark\cite{spark} is unable to parse multi-line csv files even after the added support in Spark 2.2. Thus, for our experiments, we created an ETL pipeline as follows to convert the raw data to processed data.
 \begin{enumerate}
-	\item Parse csv files using pandas\cite{pandas} (pandas has excellent support for parsing csv files, including multi-line csv files) and load it into sqlite database. Also parse the xml file in python, create a csv file and load it into the sqlite\cite{sqlite} database.
+	\item Parse csv files using pandas\cite{pandas} (pandas has excellent support for parsing csv files, including multi-line csv files) and load it into sqlite database. Also parse the xml file in python, create a csv file and load it into the sqlite\cite{sqlite} database (about 4.5 GB).
 	\item Since the process involves joins and the csv files are too big to fit in memory, we rely on Spark SQL to do the joins and save the final output to parquet files.
 \end{enumerate}
 
 \section{Methodology}
 \subsection{Pre-processing}
-Duplicates are those questions that have the same answer as the original question. We consider these questions equivalent, semantically. In the table below is the distribution of answer classes against the number of duplicate questions linked for tag \texttt{python}. Almost 90\% of the answers are linked to 4 or fewer questions. It is prohibitively expensive and doesn't yield as much benefit to train the algorithm for all the answer classes. Therefore, we set our threshold to a number between 10-15 answer classes while training the classifier.
+Duplicates are those questions that have the same answer as the original question. We consider these questions equivalent, semantically. In the table below is the distribution of answer classes against the number of duplicate questions linked for tag \texttt{python}. Almost 90\% of the answers are linked to 4 or fewer questions. It is too expensive (computationally) and doesn't yield as much benefit to train the algorithm for all the answer classes. Therefore, we set our threshold to 20 answer classes while training the classifier.
 
 \begin{center}
 	\begin{tabular}
@@ -88,17 +88,20 @@ Duplicates are those questions that have the same answer as the original questio
 \end{center}
 
 \subsection{Feature Extraction}
-We use only the text column to determine duplicates. Limited on time, we choose only the feature extraction methods provided by Spark ML. The first step is to clean the body of the post -- this means removing code blocks, html tags and urls/links. We use a bag-of-words model to determine the vector embedding for the words. We tokenize the text, remove stopwords and compute the tf-idf score for each word and limit the vocabulary to 500 words.
+We use only the text column to determine duplicates. Limited on time, we choose only the feature extraction methods provided by Spark ML. The first step is to clean the body of the post -- this means removing code blocks, html tags and urls/links. We use a bag-of-words model to determine the vector embedding for the words. We tokenize the text, remove stopwords and compute the tf-idf score for each word and limit the vocabulary to 500 words. We implemented these using Spark's Pipeline.
 
 \subsection{Modeling}
 We formulate the problem as a classification problem -- with the task of classifying which answerID is the most likely answer for a given question. In simple terms, the input is a list of question-answer pairs (including duplicates) for a particular \textit{tag}. For a new question, our model returns as output, a list of scores for each answer class in the training set.\\
 
 We use the \textit{One-vs-Rest} strategy to break down this multi-class classification problem into several binary classification problems. Spark's One-vs-Rest classifier does a great job but doesn't output probabilities of classes. So, we write a custom one-vs-rest classifier with Logistic Regression as the underlying algorithm to tackle this problem.\\
 
-With popular tags, like \texttt{javascript} or \texttt{java}, with a lot of questions, the number of answer classes can be as high as 200 or 250 even after the pre-processing step. This presents an imbalanced classification problem for each underlying classifier. For example, some answer classes will have a few positive examples when compared with the rest of the dataset (negative examples). One solution is to take a random subset of the negative examples so that the overall ratio of positive to negative examples is balanced. However, this approach involves writing a custom function to subsample negative examples and is also troublesome while combining outputs from all classifiers. Thus, we resorted to using the weights approach while training Logistic Regression models. We specified weights for both positive and negative examples in each class that effectively imposes a much larger penalty on misclassifying the positive class. Specifically, if there are $p$ positive examples (usually fewer than the number of negative examples) and the size of the dataset is $n$, we assign a weight of $\frac{n-p}{n}$ to the positive examples and $\frac{p}{n}$ to the negative examples. If there are $k$ answer classes, we train $k$ binary classifiers for each of the answer class and collect the coefficients of the positive examples across all classifiers to rank them.
+With popular tags, like \texttt{python} or \texttt{java}, with a lot of questions, the number of answer classes can be as high as 200 or 250 even after the pre-processing step. This presents an imbalanced classification problem for each underlying classifier. For example, some answer classes will have a few positive examples when compared with the rest of the dataset (negative examples). One solution is to take a random subset of the negative examples so that the overall ratio of positive to negative examples is balanced. However, this approach involves writing a custom function to subsample negative examples and is also troublesome while combining outputs from all classifiers. Thus, we resorted to using the weights approach while training Logistic Regression models. We specified weights for both positive and negative examples in each class that effectively imposes a much larger penalty on misclassifying the positive class. Specifically, if there are $p$ positive examples (usually fewer than the number of negative examples) and the size of the dataset is $n$, we assign a weight of $\frac{n-p}{n}$ to the positive examples and $\frac{p}{n}$ to the negative examples. If there are $k$ answer classes, we train $k$ binary classifiers for each of the answer class and collect the coefficients of the positive examples across all classifiers to rank them.
 
 \subsection{Evaluation}
 We use stratified random sampling to split our data into training (75\%) and test sets (25\%). Stratified sampling proportionately allocates 75\% of the questions \textit{per answer class} in the training set and the rest in the test set. Spark doesn't have an inbuilt method for stratified sampling so we use a different approach using window and rank function to accomplish this.\\
+
+Training set = Original questions + 75\% of duplicate questions\\
+Test set = Rest 25\% of duplicate questions\\
 
 With our current choice of training strategy, i.e. One-vs-rest, using cross-validation and hyperparameter tuning was out of the question, mainly because the model was too expensive computationally.\\
 
@@ -128,7 +131,6 @@ We ran a few experiments -- classifiers for the most popular tags  on stackoverf
 	\end{tabular}
 \end{center}
 
-
 \textbf{Setup:} One master instance of \textbf{m4.large} and 6 task instances of \textbf{m4.large} machines.\\
 
 \textbf{Time:} Average time taken per tag was approximately 30 minutes. We found this prohibitively expensive and didn't pursue the experiment using the entire Stack Overflow data. Recall that this is just 10\% of entire Stack Overflow's data and we have already set a high threshold (20) on the minimum number of duplicate questions.
@@ -144,15 +146,16 @@ There is ample scope of improvement of our model. Given more time and computatio
 	\item Explore deep learning and ensemble models.
 \end{itemize}
 
+\section{Conclusion}
+In this project, we used very common text-mining techniques and classification algorithms in Spark to produce a good base model for detecting duplicates. Spark provides a very suitable platform to build apps that handle scale effortlessly with increase in data size. Ultimately, how well this algorithm leads a user to a pre-existing question-answer pair that solves their problem is the true measure of how successful the model is.
 
 \section{Contribution}
 \begin{itemize}
-	\item Ram Anand Vutukuru: 80\% of his time on ETL tasks, i.e. setting up pipeline to parse raw data, load it to SQLite database and create processed data. 20\% on the code to build the classifier pipeline, especially the initial data cleaning phase.
+	\item Ram Anand Vutukuru: 80\% of his time was spent on ETL tasks, i.e. setting up pipeline to parse raw data, load it to SQLite database and create processed data. 20\% on the code to build the classifier pipeline, especially the initial data cleaning phase.
 	\item Siddhant Sahu: Most of his time was spent in building the pipeline, writing the custom one-vs-rest classifier and evaluation metric and running experiments on EMR.
 	
 	Both contributed equally in writing the report -- initial sections were written by Ram and later sections by Siddhant.
 \end{itemize}
-
 
 \begin{thebibliography}{1}
 	
